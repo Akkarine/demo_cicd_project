@@ -1,0 +1,75 @@
+version: '3.7'
+# Данный файл предназначается для запуска образов на проде. Он только берет образы с тегом latest и запускает их.
+
+volumes:
+  staticfiles:
+    name: staticfiles
+    driver: local
+
+networks:
+  default:
+    external:
+      name: demo-production
+
+services:
+
+  db:
+    image: ${CI_REGISTRY_IMAGE}/db:latest
+    container_name: db-prod
+    restart: 'always'
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - DB_NAME=demo
+      - DB_USER
+      - DB_PASSWORD
+    ports:
+      - 127.0.0.1:5432:5432
+    volumes:
+      - /srv/db/data:/var/lib/postgresql/data
+      - /srv/db/backupsrvkey:/backupsrvkey
+    shm_size: 128MB
+    command: ["postgres"]
+
+  .common_backend_code: &common_backend_code
+    image: ${CI_REGISTRY_IMAGE}/backend:latest
+    restart: 'always'
+    environment:
+      - BACKEND_HOSTNAME=backend-prod
+      - DB_HOST=db-prod
+      - DB_PORT=5432
+      - DB_USER
+      - DB_PASSWORD
+      - DEBUG=False
+      - ALLOWED_WEB_HOST
+      - NGINX_SERVER_HOSTNAME=${NGINX_SERVER_HOSTNAME}
+      - SECRET_KEY
+      - GUNICORN_WORKERS_NUM=${GUNICORN_WORKERS_NUM:-2}
+    depends_on:
+      - db
+
+  backend:
+    <<: *common_backend_code
+    container_name: backend-prod
+    command: gunicorn --access-logfile - src.demo.wsgi:application --workers=2 --timeout 180 -b 0.0.0.0:8000
+    expose:
+      - 8000
+    volumes:
+      - staticfiles:/app/static
+
+  proxy:
+    image: ${CI_REGISTRY_IMAGE}/proxy:latest
+    restart: 'always'
+    environment:
+      - ALLOWED_WEB_HOST=${ALLOWED_WEB_HOST}
+      - NGINX_BACKEND_CONTAINER_NAME=backend-prod
+      - NGINX_SERVER_HOSTNAME=${NGINX_SERVER_HOSTNAME}
+      - NGINX_ACCESS_LOG_SETTINGS=${NGINX_ACCESS_LOG_SETTINGS}
+    ports:
+      - ${ALLOWED_WEB_HOST}:8000:80
+    container_name: proxy-prod
+    command: /bin/bash -c "envsubst '$${NGINX_BACKEND_CONTAINER_NAME},$${NGINX_FRONTEND_CONTAINER_NAME},$${NGINX_CHANNELS_CONTAINER_NAME},$${NGINX_SERVER_HOSTNAME},$${NGINX_ACCESS_LOG_SETTINGS}' < /etc/nginx/demo.nginx > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
+    volumes:
+      - staticfiles:/static
+    depends_on:
+      - backend

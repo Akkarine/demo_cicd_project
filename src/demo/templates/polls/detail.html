@@ -1,0 +1,31 @@
+{% load bootstrap4 %}
+{% bootstrap_css %}
+{% bootstrap_javascript jquery='full' %}
+{% bootstrap_messages %}
+
+
+
+<div class="container d-flex h-100">
+  <div class="row align-items-center h-100 mx-auto">
+    <div class="card" style="width: 18rem;">
+      <div class="card-body">
+        <h5 class="card-title">{{ question.question_text }}</h5>
+
+        {% if error_message %}<p><strong style="color: red;">{{ error_message }}</strong></p>{% endif %}
+
+        <form action="{% url 'demo:vote' question.id %}" method="post" class="form-group pb-0 mb-0">
+          {% csrf_token %}
+          {% for choice in question.choice_set.all %}
+            <input type="radio" name="choice" id="choice{{ forloop.counter }}" value="{{ choice.id }}">
+            <label for="choice{{ forloop.counter }}">{{ choice.choice_text }}</label><br>
+          {% endfor %}
+          <div class="row">
+            <div class="col text-center">
+              <input type="submit" value="Голосовать" class="btn btn-primary" style="display: inline-block;">
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,107 @@
+# Полезные ссылки, которые использовались для создания конфигурации:
+# https://nginx.org/ru/docs/example.html
+# https://www.nginx.com/resources/wiki/start/topics/examples/full/
+# https://nuxtjs.org/faq/nginx-proxy/
+# https://www.nginx.com/resources/wiki/start/topics/examples/djangofastcgi/
+# https://nuxtjs.org/faq/nginx-proxy/
+# http://docs.gunicorn.org/en/stable/deploy.html#nginx-configuration
+# https://habr.com/ru/post/198982/
+# Местонахождение файлов логов в докер-образе: https://github.com/nginxinc/docker-nginx/blob/master/stable/buster/Dockerfile
+
+user                                        nginx;
+worker_processes                            auto;
+error_log                                   /var/log/nginx/error.log warn;
+pid                                         /var/run/nginx.pid;
+
+events {
+    worker_connections                      1024; # increase if you have lots of clients
+    accept_mutex                            on; # set to 'on' if nginx worker_processes > 1
+    use                                     epoll;
+    # multi_accept                            on;
+}
+
+http {
+    include                                 /etc/nginx/mime.types;
+    default_type                            application/octet-stream;
+    log_format main                         '$http_x_real_ip/$remote_addr [$time_local] "$request" '
+                                            'status:$status $body_bytes_sent referrer:"$http_referer" '
+                                            '"$http_user_agent"';
+    # У нас есть Traefik, который занимается тем же самым и на котором не будем отключать (т.к. обрабатывает и другой трафик)
+    # https://nginx.org/ru/docs/http/ngx_http_log_module.html#access_log (если понадобится)
+
+    map $status $loggable {
+        ~^[123]  0;
+        default 1;
+    }
+
+    access_log                              ${NGINX_ACCESS_LOG_SETTINGS};
+
+    sendfile                                on;
+    tcp_nopush                              on;
+    tcp_nodelay                             on;
+    keepalive_timeout                       30;
+    keepalive_requests                      1000;
+    reset_timedout_connection               on;
+
+    upstream backend {
+        server                              ${NGINX_BACKEND_CONTAINER_NAME}:8000;
+    }
+
+    map $sent_http_content_type $expires {
+        "text/html"                         epoch;
+        "text/html; charset=utf-8"          epoch;
+        default                             off;
+    }
+
+#    server {
+#        # if no Host match, close the connection to prevent host spoofing
+#        listen                              80 default_server;
+#        return                              444;
+#    }
+
+    server {
+
+        listen                              80;
+        server_name                         ${NGINX_SERVER_HOSTNAME};
+
+        charset                             UTF-8;
+
+        gzip                                on;
+        gzip_types                          text/plain text/css text/xml application/xml application/javascript application/json;
+        gzip_min_length                     1000;
+        gzip_proxied                        expired no-cache no-store private auth;
+        client_max_body_size                50M;
+        client_body_buffer_size             128k;
+
+        #ignore_invalid_headers             off;
+        #proxy_max_temp_file_size           0;
+        #client_max_body_size               1024M;
+
+        proxy_redirect                      off;
+        proxy_set_header Host               $host;
+        proxy_set_header X-Real-IP          $remote_addr;
+        proxy_set_header X-Forwarded-For    $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto  $scheme;
+        proxy_set_header X-Forwarded-Host   $server_name;
+        proxy_read_timeout                  3m;
+        proxy_connect_timeout               3m;
+        proxy_send_timeout                  3m;
+        proxy_pass_header                   X-CSRFToken;
+
+        # https://asdqwe.net/blog/solutions-504-gateway-timeout-nginx/
+        send_timeout                        3m;
+        client_header_timeout               3m;
+        client_body_timeout                 3m;
+
+        location / {
+            expires $expires;
+            proxy_pass                      http://backend;
+        }
+
+        location /static/ {
+            alias /static/;
+        }
+
+    }
+
+}

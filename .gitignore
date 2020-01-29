@@ -1,0 +1,10 @@
+.DS_Store
+__pycache__/
+*.pyc
+.idea
+*.iml
+.log
+Pipfile.lock
+/psql/backup_id_rsa
+test-logs
+!test-logs/.gitkeep

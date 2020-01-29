@@ -1,0 +1,26 @@
+{% load bootstrap4 %}
+{% bootstrap_css %}
+{% bootstrap_javascript jquery='full' %}
+{% bootstrap_messages %}
+
+
+<div class="container d-flex h-100">
+  <div class="row align-items-center h-100 mx-auto">
+    <div class="card" style="width: 18rem;">
+      <div class="card-body">
+        <h5 class="card-title">{{ question.question_text }}</h5>
+        <ul>
+          {% for choice in question.choice_set.all %}
+            <li>{{ choice.choice_text }} -- {{ choice.votes }} голосов</li>
+          {% endfor %}
+        </ul>
+        <div class="row">
+          <div class="col text-center">
+            <a href="{% url 'demo:detail' question.id %}" class="card-link">Голосовать снова</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

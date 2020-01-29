@@ -1,0 +1,27 @@
+{% load bootstrap4 %}
+{% bootstrap_css %}
+{% bootstrap_javascript jquery='full' %}
+{% bootstrap_messages %}
+
+<div class="container d-flex h-100">
+  <div class="row align-items-center h-100 mx-auto">
+    <div class="card" style="width: 18rem;">
+      <div class="card-body">
+        <h5 class="card-title">Пройти опрос</h5>
+{#        <h6 class="card-subtitle mb-2 text-muted">Card subtitle</h6>#}
+        {% if latest_question_list %}
+          <ul>
+            {% for question in latest_question_list %}
+              <li><a href="{% url 'demo:detail' question.id %}">{{ question.question_text }}</a></li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p>No polls are available.</p>
+        {% endif %}
+{#        <a href="#" class="card-link">Card link</a>#}
+{#        <a href="#" class="card-link">Another link</a>#}
+      </div>
+    </div>
+  </div>
+</div>
+

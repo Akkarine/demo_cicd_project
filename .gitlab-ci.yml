@@ -1,0 +1,396 @@
+stages:
+  - base-img-rebuild
+  - rebuild-dev-db
+  - build
+  - test
+  - deploy-review
+  - review
+  - rebuild-approved-db-img
+  - deploy-prod
+  - clear
+  - restore-db
+
+# Устанавливается в manual, чтобы отключить создание job при тестировании CI/CD pipeline
+.do-not-execute: &do-not-execute
+  when: on_success
+
+.dev: &dev
+  only:
+    refs:
+      - merge_requests
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+
+.staging: &staging
+  only:
+    refs:
+      - merge_requests
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
+  <<: *do-not-execute
+
+.both: &both
+  only:
+    refs:
+      - merge_requests
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_BUILDKIT: 1
+
+rebuild-base-backend:
+  stage: base-img-rebuild
+  image:
+    name: docker:19.03
+    entrypoint: [""]
+  script:
+    - echo -e "\e[96mОбновление базового образа...\e[0m";
+    - docker build --file Dockerfile.backend --target base --tag $CI_REGISTRY_IMAGE/backend:base .
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker push $CI_REGISTRY_IMAGE/backend:base
+    - docker logout $CI_REGISTRY
+  only:
+    refs:
+      - merge_requests
+    changes:
+      - Pipfile
+      - configs/*
+      - scripts/*
+      - manage.py
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
+  tags:
+    - staging
+  <<: *do-not-execute
+
+
+rebuild-dev-db-img: &rebuild-dev-db-img
+  stage: rebuild-dev-db
+  image:
+    name: docker:19.03
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull -q $CI_REGISTRY_IMAGE/db:latest || true
+    - mv $backup_id_rsa $CI_PROJECT_DIR/psql/backup_id_rsa
+    - docker build --target dev --tag $CI_REGISTRY_IMAGE/db:dev --cache-from $CI_REGISTRY_IMAGE/db:latest
+      --build-arg BACKUP_DB_SERVER_IP=$BACKUP_DB_SERVER_IP
+      --build-arg BACKUP_DB_SERVER_PATH=$BACKUP_DB_SERVER_PATH
+      --build-arg BACKUP_DB_SERVER_USER=$BACKUP_DB_SERVER_USER
+      --build-arg BACKUP_DB_SERVER_PASSWORD=$BACKUP_DB_SERVER_PASSWORD
+      --build-arg BUILD_TIME=$(date +%F_%H-%M)
+      ./psql
+    # Разворачиваем базу данных внутри образа, делаем из контейнера новый образ и отправляем его.
+    # После распаковки нового образа - старые ещё нельзя удалить, т.к. они могут использоваться в работающих окружениях
+    # TODO: 1. применить версионность db:dev-$CI_PIPELINE_ID, т.к. если в двух сборках (маловероятно), будут изменены БД - заглючит стейджинг
+    - docker run --name db-$CI_PIPELINE_ID $CI_REGISTRY_IMAGE/db:dev postgres --version | gzip > $CI_PROJECT_DIR/init_db_log.gz
+    - docker container commit db-$CI_PIPELINE_ID $CI_REGISTRY_IMAGE/db:dev
+    - docker push $CI_REGISTRY_IMAGE/db:dev
+    - docker logout $CI_REGISTRY
+    - docker container rm --force --volumes db-$CI_PIPELINE_ID
+    - rm $CI_PROJECT_DIR/psql/backup_id_rsa
+  only:
+        changes:
+          - psql/*
+    refs:
+      - merge_requests
+      #- schedules
+      - triggers
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/init_db_log.gz
+    expire_in: 5 days
+    when: on_failure
+  tags:
+    - staging
+  <<: *do-not-execute
+
+rebuild-proxy-img:
+  stage: build
+  image:
+    name: docker:19.03
+    entrypoint: [""]
+  script:
+    # TODO: 2. Сделать то же самое для proxy, что и для TODO: 1. для бд выше.
+    - docker build --tag $CI_REGISTRY_IMAGE/proxy:latest ./nginx
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker push $CI_REGISTRY_IMAGE/proxy:latest
+    - docker logout $CI_REGISTRY
+  only:
+        changes:
+          - nginx/*
+    refs:
+      - merge_requests
+      #- schedules
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
+  tags:
+    - staging
+  <<: *do-not-execute
+
+build-backend:
+  stage: build
+  image:
+    name: docker:19.03
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull -q $CI_REGISTRY_IMAGE/backend:base || true
+    - docker pull -q $CI_REGISTRY_IMAGE/backend:latest || true
+    - docker build --file Dockerfile.backend --target backend --tag $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG
+      --cache-from $CI_REGISTRY_IMAGE/backend:base
+      --cache-from $CI_REGISTRY_IMAGE/backend:latest
+      .
+    - docker push $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG
+    - docker logout $CI_REGISTRY
+  tags:
+    - staging
+  only:
+    refs:
+      - merge_requests
+    variables:
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
+      - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
+  <<: *do-not-execute
+
+
+testing:
+  <<: *both
+  stage: test
+  image: tmaier/docker-compose:latest
+  variables:
+    ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
+    NGINX_SERVER_HOSTNAME: $STAGING_ALLOWED_WEB_HOST
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull -q $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG
+    - docker pull -q $CI_REGISTRY_IMAGE/db:dev
+    - docker logout $CI_REGISTRY
+    - docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG up -d db
+    - docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG run --name backend-$CI_PIPELINE_ID backend-test echo -e "\e[96mТестирование завершено\e[0m"
+    # https://stackoverflow.com/questions/34724980/finding-a-string-in-docker-logs-of-container
+    - >
+      if docker-compose -f docker-compose.test-and-stage.yml logs backend-test 2>&1 | grep -i "error\|Your models have changes"; then
+        echo -e "\e[31mПри тестировании были обнаружены ошибки\e[0m"
+        docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG logs --no-color --timestamps db > test-logs/db.log 2>&1
+        docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG logs --no-color --timestamps backend-test > test-logs/app.log 2>&1
+        docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG logs --no-color --timestamps db backend-test > test-logs/logs_combined.log 2>&1
+      fi;
+    # TODO: разобраться с volume
+    - docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG down -v
+    - ! test -e $CI_PROJECT_DIR/test-logs/logs_combined.log || echo -e "\e[96mТесты успешно пройдены\e[0m" && exit 0
+    - exit 1
+  tags:
+    - staging
+  artifacts:
+    paths:
+      - $CI_PROJECT_DIR/test-logs/
+    expire_in: 5 days
+    when: on_failure
+  <<: *do-not-execute
+
+# ------------- REVIEW SECTION -------------
+
+.review_common: &review_common
+  image: tmaier/docker-compose:latest
+  stage: review
+  variables:
+    GIT_STRATEGY: none
+  when: manual
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+  tags:
+    - staging
+
+deploy_review:
+  <<: *both
+  <<: *review_common
+  variables:
+    GIT_STRATEGY: clone
+    ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
+    NGINX_SERVER_HOSTNAME: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
+    NGINX_ACCESS_LOG_SETTINGS: "/var/log/nginx/access.log combined if=$$loggable"
+  stage: deploy-review
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull -q $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG
+    - docker pull -q $CI_REGISTRY_IMAGE/db:dev
+    - docker pull -q $CI_REGISTRY_IMAGE/proxy:latest
+    - docker logout $CI_REGISTRY
+    - docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG up -d db backend proxy
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    url: https://$CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
+    # https://docs.gitlab.com/ee/ci/yaml/README.html#environmenton_stop
+    # https://gitlab.com/gitlab-examples/review-apps-nginx/blob/master/.gitlab-ci.yml
+    on_stop: stop_review
+
+skip_review:
+  <<: *dev
+  <<: *review_common
+  stage: deploy-review
+  script:
+    - echo -e "$GITLAB_USER_NAME skipped review"
+
+approve-dev:
+  <<: *dev
+  <<: *review_common
+  script:
+    - echo -e "\e[96mApproved by $GITLAB_USER_NAME\e[0m"
+
+approve-staging:
+  <<: *staging
+  <<: *review_common
+  script:
+    - echo -e "\e[96mApproved by $GITLAB_USER_NAME\e[0m"
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull -q $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG
+    - docker tag $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG $CI_REGISTRY_IMAGE/backend:latest
+    - docker tag $CI_REGISTRY_IMAGE/backend:$CI_COMMIT_REF_SLUG $CI_REGISTRY_IMAGE/backend:$CI_PIPELINE_ID
+    # Чтобы знать, что за конкретный билд у нас работает и иметь возможность откатиться к предыдущему
+    - docker push $CI_REGISTRY_IMAGE/backend:$CI_PIPELINE_ID
+    - docker push $CI_REGISTRY_IMAGE/backend:latest
+    - docker logout $CI_REGISTRY
+
+reject:
+  <<: *both
+  <<: *review_common
+  script:
+    - echo -e "\e[31mRejected by $GITLAB_USER_NAME\e[0m"
+    - exit 1
+
+stop_review:
+  <<: *both
+  <<: *review_common
+  variables:
+    GIT_STRATEGY: fetch
+    ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
+    NGINX_SERVER_HOSTNAME: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
+  script:
+    - docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG down -v
+  environment:
+    name: review/$CI_COMMIT_REF_NAME
+    action: stop
+
+# --------- END OF REVIEW SECTION ----------
+
+rebuild-approved-db-img:
+  <<: *rebuild-dev-db-img
+  <<: *staging
+  stage: rebuild-approved-db-img
+  variables:
+    GIT_STRATEGY: fetch
+  script:
+    - mv $backup_id_rsa $CI_PROJECT_DIR/psql/backup_id_rsa
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull -q $CI_REGISTRY_IMAGE/db:latest || true
+    - docker build --target production --tag $CI_REGISTRY_IMAGE/db:latest --cache-from $CI_REGISTRY_IMAGE/db:latest
+      --build-arg BACKUP_DB_SERVER_IP=$BACKUP_DB_SERVER_IP
+      --build-arg BACKUP_DB_SERVER_PATH=$BACKUP_DB_SERVER_PATH
+      --build-arg BACKUP_DB_SERVER_USER=$BACKUP_DB_SERVER_USER
+      --build-arg BACKUP_DB_SERVER_PASSWORD=$BACKUP_DB_SERVER_PASSWORD
+      ./psql
+    - docker push $CI_REGISTRY_IMAGE/db:latest
+    - docker logout $CI_REGISTRY
+
+deploy-production: &deploy-prod
+  <<: *staging
+  image: tmaier/docker-compose:latest
+  stage: deploy-prod
+  variables:
+    # TODO: переписать всё для GIT_STRATEGY: none (вручную рулить только докером, без композа)
+    GIT_STRATEGY: clone
+    NGINX_SERVER_HOSTNAME: 'it34demo.sngy.ru'
+    NGINX_ACCESS_LOG_SETTINGS: "/var/log/nginx/access.log combined if=$$loggable"
+    ALLOWED_WEB_HOST: $PRODUCTION_ALLOWED_WEB_HOST
+  script:
+    - docker exec db-prod /backup.sh
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull -q $CI_REGISTRY_IMAGE/backend:latest
+    - docker pull -q $CI_REGISTRY_IMAGE/db:latest
+    - docker pull -q $CI_REGISTRY_IMAGE/proxy:latest
+    - docker-compose -f docker-compose.production.yml down --volumes
+    - GUNICORN_WORKERS_NUM="$(($(getconf _NPROCESSORS_ONLN)*2))" docker-compose -f docker-compose.production.yml up -d db backend proxy
+    - docker logout $CI_REGISTRY
+# TODO: обновить тестовый образ БД с помощью токена
+  environment:
+    name: production
+    url: http://it34demo.sngy.ru
+  when: manual
+  tags:
+    - production
+
+
+deploy-production-wo-containers:
+  <<: *deploy-prod
+  # Для такого редкого случая, когда у нас нет каких-то рабочих контейнеров (нельзя сделать бэкап)
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker pull -q $CI_REGISTRY_IMAGE/backend:latest
+    - docker pull -q $CI_REGISTRY_IMAGE/db:latest
+    - docker pull -q $CI_REGISTRY_IMAGE/proxy:latest
+    - docker-compose -f docker-compose.production.yml down --volumes
+    - GUNICORN_WORKERS_NUM="$(($(getconf _NPROCESSORS_ONLN)*2))" docker-compose -f docker-compose.production.yml up -d db backend proxy
+    - docker logout $CI_REGISTRY
+
+.clean-action: &clean-action
+  stage: clear
+  variables:
+    GIT_STRATEGY: none
+  script:
+    # - docker rmi $(docker images --filter "before=backend:$(expr $CI_PIPELINE_ID - 10)" --filter=reference="backend:*" -q)
+    # https://docs.docker.com/config/pruning/
+    # https://docs.docker.com/engine/reference/commandline/system_prune/
+    # https://docs.docker.com/config/labels-custom-metadata/
+    # TODO: нужно дополнить все label-ми (networks, images, volumes, containers) и фильтровать по ним
+    - docker system prune -f || true #--filter "until=360h" || true
+
+clean-staging:
+  <<: *both
+  <<: *clean-action
+  tags:
+    - staging
+  <<: *do-not-execute
+
+clean-prod:
+  <<: *staging
+  <<: *clean-action
+  tags:
+    - production
+
+clean-staging-failure:
+  <<: *both
+  <<: *clean-action
+  script:
+    - docker logout $CI_REGISTRY
+    - docker stop proxy-$CI_PIPELINE_ID backend-$CI_PIPELINE_ID db-$CI_PIPELINE_ID
+    # Возможно стоит оставить в стопе, чтобы посмотреть состояние. Но в идеале должно всё быть в логах.
+    #- docker container rm --force --volumes proxy-$CI_PIPELINE_ID backend-$CI_PIPELINE_ID db-$CI_PIPELINE_ID
+    #- docker system prune -f --volumes
+  when: on_failure
+  allow_failure: true
+  tags:
+    - staging
+
+restore-db:
+  image: docker:19.03
+  stage: restore-db
+  script:
+    # Переменную $BACKUP_NAME с полным путём к файлу бэкапа задавать через Variables при запуске задачи вручную
+    - docker exec db-prod /backup.sh || true
+    - rm -rf /srv/demo-prj/db/data
+    # scp есть в образе, проверено
+    - scp -o StrictHostKeyChecking=no -i /srv/demo-prj/db/backupsrvkey $BACKUP_DB_SERVER_USER@$BACKUP_DB_SERVER_IP:$BACKUP_NAME /srv/demo-prj/db/backup.sql.gz
+    - cp $CI_PROJECT_DIR/psql/init_user.sh /srv/demo-prj/db/init_user.sh
+    - docker run --name psql-restore -d -v /srv/demo-prj/db/data:/var/lib/postgresql/data -v /srv/demo-prj/db/init_user.sh:/docker-entrypoint-initdb.d/0_init_user.sh -v /srv/demo-prj/db/backup.sql.gz:/docker-entrypoint-initdb.d/9_backup.sql.gz postgres:12.0
+    - rm /srv/demo-prj/db/backup.sql.gz
+    - rm /srv/demo-prj/db/init_user.sh
+  when: manual
+  tags:
+    - production

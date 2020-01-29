@@ -1,0 +1,16 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+# django-cors-headers = "==3.2.1"
+ipython = "*"
+
+[packages]
+django = "==2.2.9"
+psycopg2 = "==2.8.4"
+django-bootstrap4 = "*"
+
+[requires]
+python_version = "3.7"

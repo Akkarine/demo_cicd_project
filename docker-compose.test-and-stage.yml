@@ -1,0 +1,122 @@
+version: '3.7'
+# Данный файл предназначается для сборки и тестирования образов.
+
+volumes:
+  staticfiles:
+    name: staticfiles-${CI_PIPELINE_ID}
+    driver: local
+
+networks:
+  default:
+    name: demo-${CI_PIPELINE_ID}
+
+services:
+
+  db:
+    image: ${CI_REGISTRY_IMAGE}/db:dev
+    build:
+      context: ./psql
+      target: dev
+      args:
+        BACKUP_DB_SERVER_IP: ${BACKUP_DB_SERVER_IP}
+        BACKUP_DB_SERVER_PATH: ${BACKUP_DB_SERVER_PATH}
+        BACKUP_DB_SERVER_USER: ${BACKUP_DB_SERVER_USER}
+        BACKUP_DB_SERVER_PASSWORD: ${BACKUP_DB_SERVER_PASSWORD}
+    container_name: db-${CI_PIPELINE_ID}
+    # https://postgrespro.com/list/thread-id/2448119
+    # https://medium.com/@tough_jonquil_dog_815/postgresql-no-space-left-on-device-a9c5c3b41cff
+    shm_size: 128MB
+    command: ["postgres"]
+
+  # https://docs.gitlab.com/ce/ci/yaml/#special-yaml-features
+  # https://yaml.org/refcard.html
+  .common_backend_code: &common_backend_code
+    image: ${CI_REGISTRY_IMAGE}/backend:${CI_COMMIT_REF_SLUG}
+    restart: 'no'
+    environment:
+      - BACKEND_HOSTNAME=backend-${CI_PIPELINE_ID}
+      - DB_HOST=db-${CI_PIPELINE_ID}
+      - DB_PORT=5432
+      - DB_USER
+      - DB_PASSWORD
+      - DEBUG=False
+      - ALLOWED_WEB_HOST
+      - NGINX_SERVER_HOSTNAME=${NGINX_SERVER_HOSTNAME}
+      - SECRET_KEY
+      - GUNICORN_WORKERS_NUM=${GUNICORN_WORKERS_NUM:-2}
+    depends_on:
+      - db
+
+  backend: &common_backend_run
+    <<: *common_backend_code
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: backend
+    container_name: backend-${CI_PIPELINE_ID}
+    # http://docs.gunicorn.org/en/stable/design.html
+    command: gunicorn --access-logfile - src.core.wsgi:application --timeout 180 --workers=${GUNICORN_WORKERS_NUM:-2} -b 0.0.0.0:8000
+    expose:
+      - 8000
+    volumes:
+      - staticfiles:/app/static
+
+  backend-test:
+    <<: *common_backend_run
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: backend
+    container_name: backend-${CI_PIPELINE_ID}
+    entrypoint: /app/scripts/tests.sh
+    environment:
+      - BACKEND_HOSTNAME=backend-${CI_PIPELINE_ID}
+      - DB_HOST=db-${CI_PIPELINE_ID}
+      - DB_PORT=5432
+      - DB_USER
+      - DB_PASSWORD
+      - SECRET_KEY
+      - DEBUG=False
+      - ALLOWED_WEB_HOST=backend-${CI_PIPELINE_ID}
+      - NGINX_SERVER_HOSTNAME=${NGINX_SERVER_HOSTNAME:-localhost}
+    command: echo -e "\e[96mTests finished\e[0m"
+    volumes:
+      # подмонтирование данной папки необходимо, чтобы вытащить скриншоты из контейнера
+      # TODO: Периодически чистить папку от старых веток
+      - /srv/gitlab-runner/jobs/${CI_COMMIT_REF_SLUG}/test-logs/:/app/test-logs/
+      - staticfiles:/app/static
+
+  proxy:
+    image: ${CI_REGISTRY_IMAGE}/proxy:latest
+    build: ./nginx
+    restart: 'no'
+    environment:
+      - ALLOWED_WEB_HOST=${ALLOWED_WEB_HOST}
+      - NGINX_BACKEND_CONTAINER_NAME=backend-${CI_PIPELINE_ID}
+      - NGINX_FRONTEND_CONTAINER_NAME=frontend-${CI_PIPELINE_ID}
+      - NGINX_CHANNELS_CONTAINER_NAME=channels-${CI_PIPELINE_ID}
+      - NGINX_SERVER_HOSTNAME=${NGINX_SERVER_HOSTNAME:-localhost}
+      - NGINX_ACCESS_LOG_SETTINGS=${NGINX_ACCESS_LOG_SETTINGS}
+    labels:
+      # Инфу по конфигурации traefik смотреть в проекте инфраструктуры
+      - "traefik.enable=true"
+      - "traefik.http.routers.route-to-${CI_COMMIT_REF_SLUG}.entrypoints=web-secure"
+      - "traefik.http.routers.route-to-${CI_COMMIT_REF_SLUG}.rule=Host(`${NGINX_SERVER_HOSTNAME}`)"
+      - "traefik.http.routers.route-to-${CI_COMMIT_REF_SLUG}.service=${CI_COMMIT_REF_SLUG}"
+      # https://docs.traefik.io/middlewares/overview/#provider-namespace
+      - "traefik.http.routers.route-to-${CI_COMMIT_REF_SLUG}.middlewares=security-headers@file"
+      - "traefik.http.routers.route-to-${CI_COMMIT_REF_SLUG}.tls.options=default"
+      - "traefik.http.services.${CI_COMMIT_REF_SLUG}.loadbalancer.passHostHeader=true"
+    ports:
+    # https://docs.docker.com/compose/compose-file/#ports
+    # https://stackoverflow.com/questions/42482278/bash-command-to-return-a-free-port
+      - ${ALLOWED_WEB_HOST}:0:80
+    container_name: proxy-${CI_PIPELINE_ID}
+    command: /bin/bash -c "envsubst '$${NGINX_BACKEND_CONTAINER_NAME},$${NGINX_FRONTEND_CONTAINER_NAME},$${NGINX_CHANNELS_CONTAINER_NAME},$${NGINX_SERVER_HOSTNAME},$${NGINX_ACCESS_LOG_SETTINGS}' < /etc/nginx/demo.nginx > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
+    volumes:
+      - staticfiles:/static
+      - docs:/docs
+      - /srv/backend/media/avatars:/media/avatars
+      - /srv/backend/media/specifications:/media/specifications
+    depends_on:
+      - backend

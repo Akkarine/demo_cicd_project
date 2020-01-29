@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+*.pyc
+.idea
+*.iml
+.git/
+*.log
+Pipfile.lock
+psql/
+nginx/
+README.md
+*/Dockerfile
+.gitlab-ci.yml
+.dockerignore
+.gitignore
+docker-compose*
