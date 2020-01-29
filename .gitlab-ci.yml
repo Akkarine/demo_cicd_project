@@ -93,8 +93,8 @@ rebuild-dev-db-img: &rebuild-dev-db-img
     - docker container rm --force --volumes db-$CI_PIPELINE_ID
     - rm $CI_PROJECT_DIR/psql/backup_id_rsa
   only:
-        changes:
-          - psql/*
+    changes:
+      - psql/*
     refs:
       - merge_requests
       #- schedules
@@ -123,8 +123,8 @@ rebuild-proxy-img:
     - docker push $CI_REGISTRY_IMAGE/proxy:latest
     - docker logout $CI_REGISTRY
   only:
-        changes:
-          - nginx/*
+    changes:
+      - nginx/*
     refs:
       - merge_requests
       #- schedules
