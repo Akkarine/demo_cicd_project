@@ -10,9 +10,9 @@ stages:
   - clear
   - restore-db
 
-# Устанавливается в manual, чтобы отключить создание job при тестировании CI/CD pipeline
+# Устанавливается в manual, чтобы отключить создание job при тестировании CI/CD pipeline. По-умолчанию: on_success
 .do-not-execute: &do-not-execute
-  when: on_success
+  when: manual
 
 .dev: &dev
   only:
@@ -55,17 +55,17 @@ rebuild-base-backend:
   only:
     refs:
       - merge_requests
-    changes:
-      - Pipfile
-      - configs/*
-      - scripts/*
-      - manage.py
+#    changes:
+#      - Pipfile
+#      - configs/*
+#      - scripts/*
+#      - manage.py
     variables:
       - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
       - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
   tags:
     - staging
-  when: manual
+  <<: *do-not-execute
 
 
 rebuild-dev-db-img: &rebuild-dev-db-img
