@@ -65,7 +65,7 @@ rebuild-base-backend:
       - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
   tags:
     - staging
-  <<: *do-not-execute
+  when: manual
 
 
 rebuild-dev-db-img: &rebuild-dev-db-img
