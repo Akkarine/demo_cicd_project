@@ -92,6 +92,7 @@ services:
     restart: 'no'
     environment:
       - ALLOWED_WEB_HOST=${ALLOWED_WEB_HOST}
+      - STAGING_ALLOWED_WEB_HOST=${STAGING_ALLOWED_WEB_HOST}
       - NGINX_BACKEND_CONTAINER_NAME=backend-${CI_PIPELINE_ID}
       - NGINX_SERVER_HOSTNAME=${NGINX_SERVER_HOSTNAME:-localhost}
       - NGINX_ACCESS_LOG_SETTINGS=${NGINX_ACCESS_LOG_SETTINGS}
@@ -108,7 +109,7 @@ services:
     ports:
     # https://docs.docker.com/compose/compose-file/#ports
     # https://stackoverflow.com/questions/42482278/bash-command-to-return-a-free-port
-      - ${ALLOWED_WEB_HOST}:0:80
+      - ${STAGING_ALLOWED_WEB_HOST}:0:80
     container_name: proxy-${CI_PIPELINE_ID}
     command: /bin/bash -c "envsubst '$${NGINX_BACKEND_CONTAINER_NAME},$${NGINX_SERVER_HOSTNAME},$${NGINX_ACCESS_LOG_SETTINGS}' < /etc/nginx/demo.nginx > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
     volumes:

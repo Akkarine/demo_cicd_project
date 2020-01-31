@@ -165,6 +165,7 @@ testing:
   image: tmaier/docker-compose:latest
   variables:
     ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
+    STAGING_ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
     NGINX_SERVER_HOSTNAME: $STAGING_ALLOWED_WEB_HOST
   script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
@@ -213,6 +214,7 @@ deploy_review:
   variables:
     GIT_STRATEGY: clone
     ALLOWED_WEB_HOST: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
+    STAGING_ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
     NGINX_SERVER_HOSTNAME: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
     NGINX_ACCESS_LOG_SETTINGS: "/var/log/nginx/access.log combined if=$$loggable"
   stage: deploy-review
@@ -270,6 +272,7 @@ stop_review:
   variables:
     GIT_STRATEGY: fetch
     ALLOWED_WEB_HOST: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
+    STAGING_ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
     NGINX_SERVER_HOSTNAME: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
   script:
     - docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG down -v
@@ -308,6 +311,7 @@ deploy-production: &deploy-prod
     NGINX_SERVER_HOSTNAME: 'it34demo.sngy.ru'
     NGINX_ACCESS_LOG_SETTINGS: "/var/log/nginx/access.log combined if=$$loggable"
     ALLOWED_WEB_HOST: 'it34demo.sngy.ru'
+    PRODUCTION_ALLOWED_WEB_HOST: $PRODUCTION_ALLOWED_WEB_HOST
   script:
     - docker exec db-prod /backup.sh
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY

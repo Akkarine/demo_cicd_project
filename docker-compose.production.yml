@@ -62,11 +62,12 @@ services:
     restart: 'always'
     environment:
       - ALLOWED_WEB_HOST=${ALLOWED_WEB_HOST}
+      - PRODUCTION_ALLOWED_WEB_HOST=${PRODUCTION_ALLOWED_WEB_HOST}
       - NGINX_BACKEND_CONTAINER_NAME=backend-prod
       - NGINX_SERVER_HOSTNAME=${NGINX_SERVER_HOSTNAME}
       - NGINX_ACCESS_LOG_SETTINGS=${NGINX_ACCESS_LOG_SETTINGS}
     ports:
-      - ${ALLOWED_WEB_HOST}:8000:80
+      - ${PRODUCTION_ALLOWED_WEB_HOST}:8000:80
     container_name: proxy-prod
     command: /bin/bash -c "envsubst '$${NGINX_BACKEND_CONTAINER_NAME},$${NGINX_SERVER_HOSTNAME},$${NGINX_ACCESS_LOG_SETTINGS}' < /etc/nginx/demo.nginx > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
     volumes:
