@@ -41,7 +41,7 @@ RUN chmod 600 backup_id_rsa \
     && latest_file=$(ssh -o StrictHostKeyChecking=no -i /backup_id_rsa $BACKUP_DB_SERVER_USER@$BACKUP_DB_SERVER_IP \
     "find $BACKUP_DB_SERVER_PATH/ -type f -printf \"%T@ %p\\n\" | sort -n | cut -d' ' -f 2- | tail -n 1") \
     && echo "Разворачивается БД из бэкапа $latest_file" \
-    && scp -o StrictHostKeyChecking=no -i /backup_id_rsa $BACKUP_DB_SERVER_USER@$BACKUP_DB_SERVER_IP:$latest_file backup.sql.gz
+    && scp -o StrictHostKeyChecking=no -i /backup_id_rsa $BACKUP_DB_SERVER_USER@$BACKUP_DB_SERVER_IP:$latest_file backup.sql.gz \
     && rm /backup_id_rsa
 
 
