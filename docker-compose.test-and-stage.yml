@@ -93,8 +93,6 @@ services:
     environment:
       - ALLOWED_WEB_HOST=${ALLOWED_WEB_HOST}
       - NGINX_BACKEND_CONTAINER_NAME=backend-${CI_PIPELINE_ID}
-      - NGINX_FRONTEND_CONTAINER_NAME=frontend-${CI_PIPELINE_ID}
-      - NGINX_CHANNELS_CONTAINER_NAME=channels-${CI_PIPELINE_ID}
       - NGINX_SERVER_HOSTNAME=${NGINX_SERVER_HOSTNAME:-localhost}
       - NGINX_ACCESS_LOG_SETTINGS=${NGINX_ACCESS_LOG_SETTINGS}
     labels:
@@ -112,11 +110,8 @@ services:
     # https://stackoverflow.com/questions/42482278/bash-command-to-return-a-free-port
       - ${ALLOWED_WEB_HOST}:0:80
     container_name: proxy-${CI_PIPELINE_ID}
-    command: /bin/bash -c "envsubst '$${NGINX_BACKEND_CONTAINER_NAME},$${NGINX_FRONTEND_CONTAINER_NAME},$${NGINX_CHANNELS_CONTAINER_NAME},$${NGINX_SERVER_HOSTNAME},$${NGINX_ACCESS_LOG_SETTINGS}' < /etc/nginx/demo.nginx > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
+    command: /bin/bash -c "envsubst '$${NGINX_BACKEND_CONTAINER_NAME},$${NGINX_SERVER_HOSTNAME},$${NGINX_ACCESS_LOG_SETTINGS}' < /etc/nginx/demo.nginx > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
     volumes:
       - staticfiles:/static
-      - docs:/docs
-      - /srv/backend/media/avatars:/media/avatars
-      - /srv/backend/media/specifications:/media/specifications
     depends_on:
       - backend

@@ -93,11 +93,11 @@ rebuild-dev-db-img: &rebuild-dev-db-img
     - docker container rm --force --volumes db-$CI_PIPELINE_ID
     - rm $CI_PROJECT_DIR/psql/backup_id_rsa
   only:
-    changes:
-      - psql/*
+#    changes:
+#      - psql/*
     refs:
       - merge_requests
-      #- schedules
+      - schedules
       - triggers
     variables:
       - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
@@ -123,11 +123,10 @@ rebuild-proxy-img:
     - docker push $CI_REGISTRY_IMAGE/proxy:latest
     - docker logout $CI_REGISTRY
   only:
-    changes:
-      - nginx/*
+#    changes:
+#      - nginx/*
     refs:
       - merge_requests
-      #- schedules
     variables:
       - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
       - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
@@ -379,12 +378,12 @@ clean-staging-failure:
     - staging
 
 restore-db:
-  image: docker:19.03
   stage: restore-db
+  image: docker:19.03
   script:
-    # Переменную $BACKUP_NAME с полным путём к файлу бэкапа задавать через Variables при запуске задачи вручную
+    # Переменную BACKUP_NAME с полным путём к файлу бэкапа задавать через Variables при запуске задачи вручную
     - docker exec db-prod /backup.sh || true
-    - rm -rf /srv/demo-prj/db/data
+    - rm -rf /srv/demo-prj/db/data && mkdir /srv/demo-prj/db/data
     # scp есть в образе, проверено
     - scp -o StrictHostKeyChecking=no -i /srv/demo-prj/db/backupsrvkey $BACKUP_DB_SERVER_USER@$BACKUP_DB_SERVER_IP:$BACKUP_NAME /srv/demo-prj/db/backup.sql.gz
     - cp $CI_PROJECT_DIR/psql/init_user.sh /srv/demo-prj/db/init_user.sh

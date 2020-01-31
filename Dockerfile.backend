@@ -41,7 +41,7 @@ RUN chmod 755 manage.py \
 # https://www.jetbrains.com/help/pycharm/using-docker-as-a-remote-interpreter.html
 # https://www.jetbrains.com/help/pycharm/remote-debugging-with-product.html
 FROM base as dev-backend
-COPY backend backend/
+COPY src src/
 RUN python -B manage.py collectstatic --no-input
 # ENTRYPOINT выполняется однократно при запуске контейнера - после загрузки БД, выполняет переданную через CMD/run команду
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
@@ -51,7 +51,7 @@ EXPOSE 8000
 
 
 FROM registry.it34demo.sngy.ru/demo/it34/backend:base as backend
-COPY backend backend/
+COPY src src/
 RUN python -B manage.py collectstatic --no-input
 # ENTRYPOINT выполняется однократно при запуске контейнера - после загрузки БД, выполняет переданную через CMD/run команду
 ENTRYPOINT ["/app/scripts/entrypoint.sh"]
