@@ -86,7 +86,7 @@ rebuild-dev-db-img: &rebuild-dev-db-img
     # Разворачиваем базу данных внутри образа, делаем из контейнера новый образ и отправляем его.
     # После распаковки нового образа - старые ещё нельзя удалить, т.к. они могут использоваться в работающих окружениях
     # TODO: 1. применить версионность db:dev-$CI_PIPELINE_ID, т.к. если в двух сборках (маловероятно), будут изменены БД - заглючит стейджинг
-    - docker run --name db-$CI_PIPELINE_ID $CI_REGISTRY_IMAGE/db:dev postgres --version | gzip > $CI_PROJECT_DIR/init_db_log.gz
+    - docker run --name db-$CI_PIPELINE_ID -e POSTGRES_DB=$DB_NAME $CI_REGISTRY_IMAGE/db:dev postgres --version | gzip > $CI_PROJECT_DIR/init_db_log.gz
     - docker container commit db-$CI_PIPELINE_ID $CI_REGISTRY_IMAGE/db:dev
     - docker push $CI_REGISTRY_IMAGE/db:dev
     - docker logout $CI_REGISTRY
