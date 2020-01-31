@@ -212,7 +212,7 @@ deploy_review:
   <<: *review_common
   variables:
     GIT_STRATEGY: clone
-    ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
+    ALLOWED_WEB_HOST: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
     NGINX_SERVER_HOSTNAME: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
     NGINX_ACCESS_LOG_SETTINGS: "/var/log/nginx/access.log combined if=$$loggable"
   stage: deploy-review
@@ -269,7 +269,7 @@ stop_review:
   <<: *review_common
   variables:
     GIT_STRATEGY: fetch
-    ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
+    ALLOWED_WEB_HOST: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
     NGINX_SERVER_HOSTNAME: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
   script:
     - docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG down -v
@@ -307,7 +307,7 @@ deploy-production: &deploy-prod
     GIT_STRATEGY: clone
     NGINX_SERVER_HOSTNAME: 'it34demo.sngy.ru'
     NGINX_ACCESS_LOG_SETTINGS: "/var/log/nginx/access.log combined if=$$loggable"
-    ALLOWED_WEB_HOST: $PRODUCTION_ALLOWED_WEB_HOST
+    ALLOWED_WEB_HOST: 'it34demo.sngy.ru'
   script:
     - docker exec db-prod /backup.sh
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
