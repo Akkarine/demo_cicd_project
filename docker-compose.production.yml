@@ -26,8 +26,8 @@ services:
     ports:
       - 127.0.0.1:5432:5432
     volumes:
-      - /srv/db/data:/var/lib/postgresql/data
-      - /srv/db/backupsrvkey:/backupsrvkey
+      - /srv/demo-prj/db/data:/var/lib/postgresql/data
+      - /srv/demo-prj/db/backupsrvkey:/backupsrvkey
     shm_size: 128MB
     command: ["postgres"]
 
@@ -68,7 +68,7 @@ services:
     ports:
       - ${ALLOWED_WEB_HOST}:8000:80
     container_name: proxy-prod
-    command: /bin/bash -c "envsubst '$${NGINX_BACKEND_CONTAINER_NAME},$${NGINX_FRONTEND_CONTAINER_NAME},$${NGINX_CHANNELS_CONTAINER_NAME},$${NGINX_SERVER_HOSTNAME},$${NGINX_ACCESS_LOG_SETTINGS}' < /etc/nginx/demo.nginx > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
+    command: /bin/bash -c "envsubst '$${NGINX_BACKEND_CONTAINER_NAME},$${NGINX_SERVER_HOSTNAME},$${NGINX_ACCESS_LOG_SETTINGS}' < /etc/nginx/demo.nginx > /etc/nginx/nginx.conf && exec nginx -g 'daemon off;'"
     volumes:
       - staticfiles:/static
     depends_on:

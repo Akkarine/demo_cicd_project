@@ -225,7 +225,7 @@ deploy_review:
     - docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG up -d db backend proxy
   environment:
     name: review/$CI_COMMIT_REF_NAME
-    url: https://$CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
+    url: https://$CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru/demo/
     # https://docs.gitlab.com/ee/ci/yaml/README.html#environmenton_stop
     # https://gitlab.com/gitlab-examples/review-apps-nginx/blob/master/.gitlab-ci.yml
     on_stop: stop_review
@@ -317,10 +317,10 @@ deploy-production: &deploy-prod
     - docker-compose -f docker-compose.production.yml down --volumes
     - GUNICORN_WORKERS_NUM="$(($(getconf _NPROCESSORS_ONLN)*2))" docker-compose -f docker-compose.production.yml up -d db backend proxy
     - docker logout $CI_REGISTRY
-# TODO: обновить тестовый образ БД с помощью токена
+    # TODO: обновить тестовый образ БД с помощью токена
   environment:
     name: production
-    url: http://it34demo.sngy.ru
+    url: http://it34demo.sngy.ru/demo/
   when: manual
   tags:
     - production
