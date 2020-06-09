@@ -50,7 +50,7 @@ CMD ["gunicorn","--access-logfile","-","src.core.wsgi:application","--workers=$G
 EXPOSE 8000
 
 
-FROM registry.it34demo.sngy.ru/demo/it34/backend:base as backend
+FROM registry.company.ru/demo/it34/backend:base as backend
 COPY src src/
 RUN python -B manage.py collectstatic --no-input
 # ENTRYPOINT выполняется однократно при запуске контейнера - после загрузки БД, выполняет переданную через CMD/run команду

@@ -127,6 +127,7 @@ rebuild-proxy-img:
 #      - nginx/*
     refs:
       - merge_requests
+      #- schedules
     variables:
       - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "dev"
       - $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
@@ -213,9 +214,9 @@ deploy_review:
   <<: *review_common
   variables:
     GIT_STRATEGY: clone
-    ALLOWED_WEB_HOST: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
+    ALLOWED_WEB_HOST: $CI_ENVIRONMENT_SLUG.dev.company.ru
     STAGING_ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
-    NGINX_SERVER_HOSTNAME: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
+    NGINX_SERVER_HOSTNAME: $CI_ENVIRONMENT_SLUG.dev.company.ru
     NGINX_ACCESS_LOG_SETTINGS: "/var/log/nginx/access.log combined if=$$loggable"
   stage: deploy-review
   script:
@@ -227,7 +228,7 @@ deploy_review:
     - docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG up -d db backend proxy
   environment:
     name: review/$CI_COMMIT_REF_NAME
-    url: https://$CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru/demo/
+    url: https://$CI_ENVIRONMENT_SLUG.dev.company.ru/demo/
     # https://docs.gitlab.com/ee/ci/yaml/README.html#environmenton_stop
     # https://gitlab.com/gitlab-examples/review-apps-nginx/blob/master/.gitlab-ci.yml
     on_stop: stop_review
@@ -271,9 +272,9 @@ stop_review:
   <<: *review_common
   variables:
     GIT_STRATEGY: fetch
-    ALLOWED_WEB_HOST: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
+    ALLOWED_WEB_HOST: $CI_ENVIRONMENT_SLUG.dev.company.ru
     STAGING_ALLOWED_WEB_HOST: $STAGING_ALLOWED_WEB_HOST
-    NGINX_SERVER_HOSTNAME: $CI_ENVIRONMENT_SLUG.dev.it34demo.sngy.ru
+    NGINX_SERVER_HOSTNAME: $CI_ENVIRONMENT_SLUG.dev.company.ru
   script:
     - docker-compose -f docker-compose.test-and-stage.yml -p $CI_COMMIT_REF_SLUG down -v
   environment:
@@ -308,9 +309,9 @@ deploy-production: &deploy-prod
   variables:
     # TODO: переписать всё для GIT_STRATEGY: none (вручную рулить только докером, без композа)
     GIT_STRATEGY: clone
-    NGINX_SERVER_HOSTNAME: 'it34demo.sngy.ru'
+    NGINX_SERVER_HOSTNAME: 'company.ru'
     NGINX_ACCESS_LOG_SETTINGS: "/var/log/nginx/access.log combined if=$$loggable"
-    ALLOWED_WEB_HOST: 'it34demo.sngy.ru'
+    ALLOWED_WEB_HOST: 'company.ru'
     PRODUCTION_ALLOWED_WEB_HOST: $PRODUCTION_ALLOWED_WEB_HOST
   script:
     - docker exec db-prod /backup.sh
@@ -324,7 +325,7 @@ deploy-production: &deploy-prod
     # TODO: обновить тестовый образ БД с помощью токена
   environment:
     name: production
-    url: http://it34demo.sngy.ru/demo/
+    url: http://company.ru/demo/
   when: manual
   tags:
     - production
