@@ -353,7 +353,7 @@ deploy-production-wo-containers:
     # https://docs.docker.com/engine/reference/commandline/system_prune/
     # https://docs.docker.com/config/labels-custom-metadata/
     # TODO: нужно дополнить все label-ми (networks, images, volumes, containers) и фильтровать по ним
-    - docker system prune -f || true #--filter "until=360h" || true
+    - docker system prune --force --all --volumes || true #--filter "until=360h"
 
 clean-staging:
   <<: *both
